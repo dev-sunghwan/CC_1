@@ -1,0 +1,53 @@
+# Face Recognition System - Configuration File
+# This is an example configuration. Copy to config.yaml and customize.
+
+# RTSP Stream Configuration
+rtsp:
+  url: "rtsp://45.92.235.163:554/profile2/media.smp"
+  reconnect_attempts: 10
+  timeout: 5
+  queue_size: 10
+
+# Detection Configuration
+detection:
+  interval: 1          # Process every Nth frame (1 = every frame)
+  threshold: 0.5       # Detection confidence threshold (0-1)
+  size: [640, 640]     # Detection input size [width, height]
+  model: "buffalo_l"   # InsightFace model pack
+
+# Recognition Configuration
+recognition:
+  threshold: 0.4                    # Face matching threshold (0-1)
+  database_path: "face_database.pkl"  # Path to face database
+
+# Tracking Configuration
+tracking:
+  track_threshold: 0.6    # Track confirmation threshold
+  match_threshold: 0.8    # IoU threshold for matching
+  max_time_lost: 30       # Maximum frames to keep lost tracks
+
+# Display Configuration
+display:
+  enabled: true
+  show_fps: true
+  show_landmarks: false
+  window_name: "Face Recognition System"
+
+# Video Recording Configuration
+video:
+  save: false
+  output_path: "./output/output.mp4"
+  snapshot_dir: "./output/snapshots"
+  fps: 20
+
+# Logging Configuration
+logging:
+  level: "INFO"           # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "./logs/face_recognition.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Performance Configuration
+performance:
+  num_threads: 8
+  use_gpu: false
+  gpu_id: 0

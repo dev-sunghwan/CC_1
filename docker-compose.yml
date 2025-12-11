@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  face-recognition:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: face_recognition_system
+
+    # Environment variables
+    environment:
+      - RTSP_URL=rtsp://45.92.235.163:554/profile2/media.smp
+      - DETECTION_INTERVAL=1
+      - LOG_LEVEL=INFO
+      - DISPLAY=${DISPLAY:-:0}
+
+    # Network mode
+    network_mode: host
+
+    # Volumes for persistent data
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./config:/app/config
+      # X11 socket for display (Linux)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+    # Device access (if needed for hardware acceleration)
+    # devices:
+    #   - /dev/video0:/dev/video0
+
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+          memory: 32G
+        reservations:
+          cpus: '8'
+          memory: 16G
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Command override (optional)
+    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://45.92.235.163:554/profile2/media.smp}
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # Optional: Database service for face embeddings (future enhancement)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: face_db
+  #   environment:
+  #     - POSTGRES_DB=facedb
+  #     - POSTGRES_USER=faceuser
+  #     - POSTGRES_PASSWORD=facepass
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+
+# volumes:
+#   postgres_data:
