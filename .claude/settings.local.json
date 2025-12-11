@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version:*)",
+      "Bash(docker info:*)",
+      "Bash(if not exist data mkdir data)",
+      "Bash(if not exist logs mkdir logs)",
+      "Bash(if not exist output mkdir output)",
+      "Bash(if not exist models mkdir models)",
+      "Bash(if not exist config mkdir config)",
+      "Bash(copy:*)"
+    ]
+  }
+}

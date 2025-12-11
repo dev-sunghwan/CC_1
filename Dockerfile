@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     pkg-config \
+    # Cairo and gobject for PyGObject
+    libcairo2-dev \
+    libgirepository1.0-dev \
     # GStreamer and plugins
     gstreamer1.0-tools \
     gstreamer1.0-plugins-base \
@@ -60,8 +63,6 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ ./src/
-COPY models/ ./models/ 2>/dev/null || :
-COPY config/ ./config/ 2>/dev/null || :
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs /app/output /app/models
