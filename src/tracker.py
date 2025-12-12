@@ -246,7 +246,8 @@ class BYTETracker:
                     'identity': track.identity,
                     'identity_confidence': track.identity_confidence,
                     'age': track.age,
-                    'hits': track.hits
+                    'hits': track.hits,
+                    'time_since_update': track.time_since_update
                 }
                 active_tracks.append(track_dict)
 

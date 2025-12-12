@@ -8,7 +8,13 @@
       "Bash(if not exist output mkdir output)",
       "Bash(if not exist models mkdir models)",
       "Bash(if not exist config mkdir config)",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(tee:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker images:*)"
     ]
   }
 }

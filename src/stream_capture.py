@@ -1,18 +1,16 @@
 """
-GStreamer-based RTSP Stream Capture Module
+OpenCV-based RTSP Stream Capture Module
 Handles real-time RTSP stream ingestion with automatic reconnection
+Optimized for NAT/port-forwarded environments using TCP transport
 """
 
-import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst, GLib
-import numpy as np
 import cv2
+import numpy as np
 import threading
 import queue
 import logging
-from typing import Optional, Callable
 import time
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 class RTSPStreamCapture:
     """
-    GStreamer-based RTSP stream capture with automatic reconnection
-    Optimized for NAT/port-forwarded environments
+    OpenCV-based RTSP stream capture with automatic reconnection
+    Optimized for NAT/port-forwarded environments using TCP transport
     """
 
     def __init__(self, rtsp_url: str, queue_size: int = 10):
@@ -29,187 +27,165 @@ class RTSPStreamCapture:
         Initialize RTSP stream capture
 
         Args:
-            rtsp_url: RTSP stream URL
+            rtsp_url: RTSP stream URL (should include credentials if needed)
             queue_size: Maximum frame queue size
         """
-        Gst.init(None)
-
         self.rtsp_url = rtsp_url
         self.frame_queue = queue.Queue(maxsize=queue_size)
-        self.pipeline = None
-        self.loop = None
+        self.cap = None
         self.running = False
         self.thread = None
         self.last_frame_time = time.time()
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 10
+        self.frame_count = 0
 
-    def _build_pipeline(self) -> str:
+    def _open_stream(self) -> bool:
         """
-        Build GStreamer pipeline string optimized for RTSP over NAT
+        Open RTSP stream with OpenCV
 
         Returns:
-            Pipeline string
+            True if successful, False otherwise
         """
-        pipeline_str = (
-            f"rtspsrc location={self.rtsp_url} "
-            "protocols=tcp "  # Force TCP for NAT traversal
-            "latency=200 "    # Low latency buffer
-            "drop-on-latency=true "
-            "! rtph264depay "  # Handle FU-A NAL units
-            "! h264parse "
-            "! avdec_h264 "    # CPU decoder (sufficient for i7-13700)
-            "! videoconvert "
-            "! video/x-raw,format=BGR "  # OpenCV-compatible format
-            "! appsink name=sink emit-signals=true max-buffers=1 drop=true"
-        )
-        return pipeline_str
-
-    def _on_new_sample(self, sink) -> Gst.FlowReturn:
-        """
-        Callback for new frame from GStreamer
-
-        Args:
-            sink: GStreamer appsink element
-
-        Returns:
-            Gst.FlowReturn status
-        """
-        sample = sink.emit("pull-sample")
-        if sample is None:
-            return Gst.FlowReturn.ERROR
-
-        buffer = sample.get_buffer()
-        caps = sample.get_caps()
-
-        # Extract frame dimensions
-        structure = caps.get_structure(0)
-        width = structure.get_value('width')
-        height = structure.get_value('height')
-
-        # Convert to numpy array
-        success, map_info = buffer.map(Gst.MapFlags.READ)
-        if not success:
-            return Gst.FlowReturn.ERROR
-
-        frame = np.ndarray(
-            shape=(height, width, 3),
-            dtype=np.uint8,
-            buffer=map_info.data
-        )
-
-        # Deep copy to prevent memory issues
-        frame = frame.copy()
-        buffer.unmap(map_info)
-
-        # Add to queue (drop oldest if full)
         try:
-            if self.frame_queue.full():
-                try:
+            # Set environment variable for RTSP transport (must be before VideoCapture)
+            import os
+            os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp'
+
+            logger.info(f"Opening RTSP stream: {self.rtsp_url}")
+            logger.info("Using TCP transport for RTSP")
+
+            # Create VideoCapture with FFmpeg backend
+            # Use raw URL without ?tcp parameter
+            self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
+
+            if not self.cap.isOpened():
+                logger.error("Failed to open RTSP stream")
+                return False
+
+            # Configure for low latency
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffering
+            self.cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)  # 10 second timeout
+
+            # Try to read first frame to verify connection
+            ret, frame = self.cap.read()
+            if not ret or frame is None:
+                logger.error("Failed to read first frame")
+                self.cap.release()
+                return False
+
+            # Get stream properties
+            width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = self.cap.get(cv2.CAP_PROP_FPS)
+
+            logger.info(f"Stream opened successfully: {width}x{height} @ {fps:.2f} FPS")
+
+            # Put first frame in queue
+            try:
+                if self.frame_queue.full():
                     self.frame_queue.get_nowait()
-                except queue.Empty:
+                self.frame_queue.put(frame, block=False)
+            except queue.Full:
+                pass
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error opening stream: {e}")
+            if self.cap:
+                self.cap.release()
+            return False
+
+    def _capture_loop(self):
+        """Main capture loop running in separate thread"""
+        logger.info("Capture loop started")
+
+        while self.running:
+            try:
+                # Check if capture is open
+                if self.cap is None or not self.cap.isOpened():
+                    logger.warning("Stream not open, attempting reconnection...")
+                    if not self._reconnect():
+                        time.sleep(2)
+                        continue
+
+                # Read frame
+                ret, frame = self.cap.read()
+
+                if not ret or frame is None:
+                    logger.warning("Failed to read frame")
+                    if not self._reconnect():
+                        time.sleep(1)
+                    continue
+
+                # Frame read successfully
+                self.frame_count += 1
+                self.last_frame_time = time.time()
+                self.reconnect_attempts = 0  # Reset on successful read
+
+                # Add to queue (drop oldest if full)
+                try:
+                    if self.frame_queue.full():
+                        self.frame_queue.get_nowait()
+                    self.frame_queue.put(frame, block=False)
+                except queue.Full:
                     pass
-            self.frame_queue.put(frame, block=False)
-            self.last_frame_time = time.time()
-            self.reconnect_attempts = 0  # Reset on successful frame
-        except queue.Full:
-            logger.warning("Frame queue full, dropping frame")
 
-        return Gst.FlowReturn.OK
+                # Log progress periodically
+                if self.frame_count % 100 == 0:
+                    logger.debug(f"Captured {self.frame_count} frames")
 
-    def _on_bus_message(self, bus, message):
+            except Exception as e:
+                logger.error(f"Capture loop error: {e}")
+                time.sleep(1)
+
+        logger.info("Capture loop stopped")
+
+    def _reconnect(self) -> bool:
         """
-        Handle GStreamer bus messages
+        Attempt to reconnect to stream
 
-        Args:
-            bus: GStreamer bus
-            message: Bus message
+        Returns:
+            True if successful, False otherwise
         """
-        t = message.type
-
-        if t == Gst.MessageType.EOS:
-            logger.warning("End of stream, attempting reconnect...")
-            self._handle_reconnect()
-        elif t == Gst.MessageType.ERROR:
-            err, debug = message.parse_error()
-            logger.error(f"GStreamer error: {err}, {debug}")
-            self._handle_reconnect()
-        elif t == Gst.MessageType.WARNING:
-            warn, debug = message.parse_warning()
-            logger.warning(f"GStreamer warning: {warn}")
-        elif t == Gst.MessageType.STATE_CHANGED:
-            if message.src == self.pipeline:
-                old_state, new_state, pending = message.parse_state_changed()
-                logger.info(f"Pipeline state: {old_state.value_nick} -> {new_state.value_nick}")
-
-    def _handle_reconnect(self):
-        """Handle reconnection logic"""
         if self.reconnect_attempts >= self.max_reconnect_attempts:
-            logger.error("Max reconnection attempts reached, stopping...")
-            self.stop()
-            return
+            logger.error("Max reconnection attempts reached")
+            return False
 
         self.reconnect_attempts += 1
         logger.info(f"Reconnection attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}")
 
-        # Stop current pipeline
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
+        # Close existing capture
+        if self.cap:
+            self.cap.release()
+            self.cap = None
 
         # Wait before reconnecting
         time.sleep(2)
 
-        # Restart pipeline
-        if self.running:
-            self._start_pipeline()
+        # Try to reopen
+        return self._open_stream()
 
-    def _start_pipeline(self):
-        """Start GStreamer pipeline"""
-        pipeline_str = self._build_pipeline()
-        logger.info(f"Starting pipeline: {pipeline_str}")
+    def start(self) -> bool:
+        """
+        Start stream capture
 
-        self.pipeline = Gst.parse_launch(pipeline_str)
-
-        # Get appsink and set callback
-        sink = self.pipeline.get_by_name("sink")
-        sink.connect("new-sample", self._on_new_sample)
-
-        # Setup bus
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message", self._on_bus_message)
-
-        # Start pipeline
-        ret = self.pipeline.set_state(Gst.State.PLAYING)
-        if ret == Gst.StateChangeReturn.FAILURE:
-            logger.error("Failed to start pipeline")
-            return False
-
-        return True
-
-    def _run_loop(self):
-        """Run GStreamer main loop in separate thread"""
-        self.loop = GLib.MainLoop()
-        try:
-            self.loop.run()
-        except Exception as e:
-            logger.error(f"Main loop error: {e}")
-
-    def start(self):
-        """Start stream capture"""
+        Returns:
+            True if successful, False otherwise
+        """
         if self.running:
             logger.warning("Stream capture already running")
-            return
+            return True
 
-        self.running = True
-
-        # Start pipeline
-        if not self._start_pipeline():
-            self.running = False
+        # Open stream
+        if not self._open_stream():
+            logger.error("Failed to open stream")
             return False
 
-        # Start GLib main loop in separate thread
-        self.thread = threading.Thread(target=self._run_loop, daemon=True)
+        # Start capture thread
+        self.running = True
+        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.thread.start()
 
         logger.info("Stream capture started")
@@ -220,19 +196,17 @@ class RTSPStreamCapture:
         if not self.running:
             return
 
+        logger.info("Stopping stream capture...")
         self.running = False
-
-        # Stop pipeline
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
-
-        # Stop main loop
-        if self.loop and self.loop.is_running():
-            self.loop.quit()
 
         # Wait for thread
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)
+
+        # Release capture
+        if self.cap:
+            self.cap.release()
+            self.cap = None
 
         logger.info("Stream capture stopped")
 
@@ -274,9 +248,9 @@ class RTSPStreamCapture:
 
 if __name__ == "__main__":
     # Test the stream capture
-    RTSP_URL = "rtsp://45.92.235.163:554/profile2/media.smp"
+    RTSP_URL = "rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp"
 
-    print("Testing RTSP stream capture...")
+    print("Testing RTSP stream capture with OpenCV...")
     print(f"URL: {RTSP_URL}")
 
     with RTSPStreamCapture(RTSP_URL) as capture:

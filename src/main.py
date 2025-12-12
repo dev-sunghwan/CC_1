@@ -17,6 +17,7 @@ from pathlib import Path
 from stream_capture import RTSPStreamCapture
 from face_recognition_pipeline import FaceRecognitionPipeline
 from tracker import BYTETracker
+from web_stream import WebStreamer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,7 +41,9 @@ class FaceRecognitionSystem:
                  detection_interval: int = 1,
                  display: bool = True,
                  save_video: bool = False,
-                 output_path: str = "output.mp4"):
+                 output_path: str = "output.mp4",
+                 web_streaming: bool = True,
+                 web_port: int = 8080):
         """
         Initialize face recognition system
 
@@ -50,17 +53,22 @@ class FaceRecognitionSystem:
             display: Whether to display output
             save_video: Whether to save output video
             output_path: Path for output video
+            web_streaming: Whether to enable web streaming
+            web_port: Port for web streaming server
         """
         self.rtsp_url = rtsp_url
         self.detection_interval = detection_interval
         self.display = display
         self.save_video = save_video
         self.output_path = output_path
+        self.web_streaming = web_streaming
+        self.web_port = web_port
 
         # Components
         self.stream_capture = None
         self.face_pipeline = None
         self.tracker = None
+        self.web_streamer = None
 
         # Threading
         self.running = False
@@ -117,6 +125,12 @@ class FaceRecognitionSystem:
             track_thresh=0.6,
             match_thresh=0.8
         )
+
+        # Initialize web streamer
+        if self.web_streaming:
+            logger.info(f"Initializing web streamer on port {self.web_port}...")
+            self.web_streamer = WebStreamer(host='0.0.0.0', port=self.web_port)
+            self.web_streamer.start()
 
         logger.info("System initialized successfully")
 
@@ -357,6 +371,10 @@ class FaceRecognitionSystem:
                         self.tracker.reset()
                         logger.info("Tracker reset")
 
+                # Update web stream
+                if self.web_streaming and self.web_streamer:
+                    self.web_streamer.update_frame(annotated)
+
                 # Save video
                 if self.save_video:
                     if self.video_writer is None:
@@ -406,6 +424,10 @@ class FaceRecognitionSystem:
         if self.video_writer:
             self.video_writer.release()
 
+        # Stop web streamer
+        if self.web_streamer:
+            self.web_streamer.stop()
+
         # Close windows
         cv2.destroyAllWindows()
 
@@ -430,7 +452,7 @@ def main():
     parser.add_argument(
         '--rtsp-url',
         type=str,
-        default='rtsp://45.92.235.163:554/profile2/media.smp',
+        default='rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp',
         help='RTSP stream URL'
     )
     parser.add_argument(

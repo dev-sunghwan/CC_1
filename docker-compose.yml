@@ -9,13 +9,14 @@ services:
 
     # Environment variables
     environment:
-      - RTSP_URL=rtsp://45.92.235.163:554/profile2/media.smp
+      - RTSP_URL=rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp
       - DETECTION_INTERVAL=1
       - LOG_LEVEL=INFO
       - DISPLAY=${DISPLAY:-:0}
 
-    # Network mode
-    network_mode: host
+    # Ports
+    ports:
+      - "8080:8080"
 
     # Volumes for persistent data
     volumes:
@@ -24,8 +25,8 @@ services:
       - ./output:/app/output
       - ./models:/app/models
       - ./config:/app/config
-      # X11 socket for display (Linux)
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # X11 socket for display (Linux only - not needed on Windows)
+      # - /tmp/.X11-unix:/tmp/.X11-unix:rw
 
     # Device access (if needed for hardware acceleration)
     # devices:
@@ -45,7 +46,7 @@ services:
     restart: unless-stopped
 
     # Command override (optional)
-    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://45.92.235.163:554/profile2/media.smp}
+    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp} --no-display
 
     # Logging configuration
     logging:
