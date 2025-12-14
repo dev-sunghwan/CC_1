@@ -6,7 +6,8 @@ Provides Flask-based MJPEG streaming for viewing video in browser
 import cv2
 import threading
 import logging
-from flask import Flask, Response, render_template_string
+import time
+from flask import Flask, Response, render_template_string, jsonify
 from typing import Optional
 import numpy as np
 
@@ -35,6 +36,8 @@ class WebStreamer:
         self.frame_lock = threading.Lock()
         self.server_thread = None
         self.running = False
+        self.start_time = None
+        self.frame_count = 0
 
         # Setup routes
         self._setup_routes()
@@ -118,6 +121,45 @@ class WebStreamer:
                 mimetype='multipart/x-mixed-replace; boundary=frame'
             )
 
+        @self.app.route('/snapshot')
+        def snapshot():
+            """Save current frame as snapshot"""
+            with self.frame_lock:
+                if self.current_frame is None:
+                    return "No frame available", 404
+
+                # Save snapshot to data directory
+                snapshot_path = '/app/data/snapshot.jpg'
+                cv2.imwrite(snapshot_path, self.current_frame)
+                logger.info(f"Snapshot saved to {snapshot_path}")
+                return f"Snapshot saved to {snapshot_path}", 200
+
+        @self.app.route('/health')
+        def health():
+            """Health check endpoint for monitoring"""
+            uptime = time.time() - self.start_time if self.start_time else 0
+
+            health_data = {
+                'status': 'healthy' if self.running else 'stopped',
+                'stream_active': self.current_frame is not None,
+                'uptime_seconds': round(uptime, 2),
+                'uptime_formatted': self._format_uptime(uptime),
+                'frame_count': self.frame_count,
+                'server': {
+                    'host': self.host,
+                    'port': self.port
+                }
+            }
+
+            return jsonify(health_data)
+
+    def _format_uptime(self, seconds: float) -> str:
+        """Format uptime in human-readable format"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
     def _generate_frames(self):
         """Generate frames for MJPEG stream"""
         while self.running:
@@ -145,6 +187,7 @@ class WebStreamer:
         """
         with self.frame_lock:
             self.current_frame = frame.copy()
+            self.frame_count += 1
 
     def start(self):
         """Start the web server in a separate thread"""
@@ -153,6 +196,8 @@ class WebStreamer:
             return
 
         self.running = True
+        self.start_time = time.time()
+        self.frame_count = 0
 
         def run_server():
             logger.info(f"Starting web streamer on http://{self.host}:{self.port}")

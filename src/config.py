@@ -1,255 +1,132 @@
 """
-Configuration Management
-Loads settings from environment variables and config files
+Centralized Configuration for Face Recognition System
+All tunable parameters in one place
 """
 
 import os
-from pathlib import Path
-from typing import Any, Dict, Optional
-import yaml
-from dotenv import load_dotenv
-import logging
-
-logger = logging.getLogger(__name__)
+from dataclasses import dataclass
+from typing import Tuple
 
 
+@dataclass
+class DetectionConfig:
+    """Face detection configuration"""
+    # Detection model settings
+    detection_size: Tuple[int, int] = (640, 640)
+    det_thresh: float = 0.3  # Detection confidence threshold (30%)
+    
+    # Recognition settings
+    recognition_thresh: float = 0.4  # Face matching threshold (40%)
+    
+    # Processing
+    detection_interval: int = 2  # Process every Nth frame
+    ctx_id: int = -1  # -1 for CPU, 0+ for GPU
+
+
+@dataclass
+class TrackerConfig:
+    """Multi-person tracking configuration"""
+    det_thresh: float = 0.3  # Minimum detection score
+    track_thresh: float = 0.5  # Track confirmation threshold
+    match_thresh: float = 0.4  # IoU threshold for matching (lower = more lenient)
+    max_time_lost: int = 30  # Max frames before deleting lost track
+    min_hits_confirm: int = 3  # Hits required to confirm track
+
+
+@dataclass
+class StreamConfig:
+    """RTSP stream configuration"""
+    # RTSP settings
+    rtsp_url: str = os.getenv('RTSP_URL', 'rtsp://localhost:554/stream')
+    queue_size: int = 10
+    buffer_size: int = 1  # OpenCV buffer size (1 = minimal latency)
+    
+    # Reconnection
+    max_reconnect_attempts: int = 10
+    reconnect_delay: float = 2.0  # seconds
+    
+    # Timeouts
+    stream_timeout: float = 5.0  # seconds
+    frame_timeout: float = 2.0  # seconds
+
+
+@dataclass
+class WebStreamConfig:
+    """Web streaming configuration"""
+    host: str = '0.0.0.0'
+    port: int = 8080
+    jpeg_quality: int = 85  # JPEG compression quality (0-100)
+
+
+@dataclass
+class DatabaseConfig:
+    """Face database configuration"""
+    database_path: str = "/app/data/face_database.pkl"
+    database_json_path: str = "/app/data/face_database.json"
+    backup_enabled: bool = True
+    max_backups: int = 5  # Keep last N backups
+
+
+@dataclass
+class SystemConfig:
+    """System-wide configuration"""
+    # Threading
+    worker_thread_count: int = 3  # capture, detection, tracking
+    
+    # Queues
+    frame_queue_size: int = 10
+    detection_queue_size: int = 10
+    result_queue_size: int = 10
+    
+    # Logging
+    log_level: str = os.getenv('LOG_LEVEL', 'INFO')
+    log_interval: int = 100  # Log stats every N frames
+    
+    # Video output
+    output_video: bool = False
+    output_path: str = "output/output.mp4"
+    output_fps: float = 20.0
+    
+    # Display
+    display_window: bool = False  # Set to True for local debugging
+
+
+@dataclass
 class Config:
-    """Configuration manager for face recognition system"""
-
-    def __init__(self, config_file: Optional[str] = None):
-        """
-        Initialize configuration
-
-        Args:
-            config_file: Path to YAML config file (optional)
-        """
-        # Load environment variables
-        load_dotenv()
-
-        # Default configuration
-        self.config = self._get_default_config()
-
-        # Load from file if provided
-        if config_file and Path(config_file).exists():
-            self._load_from_file(config_file)
-
-        # Override with environment variables
-        self._load_from_env()
-
-        logger.info("Configuration loaded successfully")
-
-    @staticmethod
-    def _get_default_config() -> Dict[str, Any]:
-        """Get default configuration"""
-        return {
-            # RTSP Stream
-            'rtsp': {
-                'url': 'rtsp://45.92.235.163:554/profile2/media.smp',
-                'reconnect_attempts': 10,
-                'timeout': 5,
-                'queue_size': 10
-            },
-            # Detection
-            'detection': {
-                'interval': 1,
-                'threshold': 0.5,
-                'size': (640, 640),
-                'model': 'buffalo_l'
-            },
-            # Recognition
-            'recognition': {
-                'threshold': 0.4,
-                'database_path': 'face_database.pkl'
-            },
-            # Tracking
-            'tracking': {
-                'track_threshold': 0.6,
-                'match_threshold': 0.8,
-                'max_time_lost': 30
-            },
-            # Display
-            'display': {
-                'enabled': True,
-                'show_fps': True,
-                'show_landmarks': False,
-                'window_name': 'Face Recognition System'
-            },
-            # Video
-            'video': {
-                'save': False,
-                'output_path': './output/output.mp4',
-                'snapshot_dir': './output/snapshots',
-                'fps': 20
-            },
-            # Logging
-            'logging': {
-                'level': 'INFO',
-                'file': './logs/face_recognition.log',
-                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            },
-            # Performance
-            'performance': {
-                'num_threads': 8,
-                'use_gpu': False,
-                'gpu_id': 0
-            }
-        }
-
-    def _load_from_file(self, config_file: str):
-        """Load configuration from YAML file"""
-        try:
-            with open(config_file, 'r') as f:
-                file_config = yaml.safe_load(f)
-
-            # Deep merge with default config
-            self._deep_merge(self.config, file_config)
-            logger.info(f"Loaded configuration from {config_file}")
-        except Exception as e:
-            logger.warning(f"Failed to load config file {config_file}: {e}")
-
-    def _load_from_env(self):
-        """Load configuration from environment variables"""
-        # RTSP
-        if os.getenv('RTSP_URL'):
-            self.config['rtsp']['url'] = os.getenv('RTSP_URL')
-        if os.getenv('RTSP_RECONNECT_ATTEMPTS'):
-            self.config['rtsp']['reconnect_attempts'] = int(os.getenv('RTSP_RECONNECT_ATTEMPTS'))
-
-        # Detection
-        if os.getenv('DETECTION_INTERVAL'):
-            self.config['detection']['interval'] = int(os.getenv('DETECTION_INTERVAL'))
-        if os.getenv('DETECTION_THRESHOLD'):
-            self.config['detection']['threshold'] = float(os.getenv('DETECTION_THRESHOLD'))
-        if os.getenv('DETECTION_SIZE'):
-            size = int(os.getenv('DETECTION_SIZE'))
-            self.config['detection']['size'] = (size, size)
-
-        # Recognition
-        if os.getenv('RECOGNITION_THRESHOLD'):
-            self.config['recognition']['threshold'] = float(os.getenv('RECOGNITION_THRESHOLD'))
-
-        # Display
-        if os.getenv('DISPLAY_ENABLED'):
-            self.config['display']['enabled'] = os.getenv('DISPLAY_ENABLED').lower() == 'true'
-
-        # Video
-        if os.getenv('SAVE_VIDEO'):
-            self.config['video']['save'] = os.getenv('SAVE_VIDEO').lower() == 'true'
-        if os.getenv('OUTPUT_PATH'):
-            self.config['video']['output_path'] = os.getenv('OUTPUT_PATH')
-
-        # Logging
-        if os.getenv('LOG_LEVEL'):
-            self.config['logging']['level'] = os.getenv('LOG_LEVEL')
-        if os.getenv('LOG_FILE'):
-            self.config['logging']['file'] = os.getenv('LOG_FILE')
-
-        # Performance
-        if os.getenv('NUM_THREADS'):
-            self.config['performance']['num_threads'] = int(os.getenv('NUM_THREADS'))
-
-    @staticmethod
-    def _deep_merge(base: Dict, update: Dict):
-        """Deep merge two dictionaries"""
-        for key, value in update.items():
-            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                Config._deep_merge(base[key], value)
-            else:
-                base[key] = value
-
-    def get(self, key_path: str, default: Any = None) -> Any:
-        """
-        Get configuration value by dot-separated key path
-
-        Args:
-            key_path: Dot-separated key path (e.g., 'rtsp.url')
-            default: Default value if key not found
-
-        Returns:
-            Configuration value
-        """
-        keys = key_path.split('.')
-        value = self.config
-
-        for key in keys:
-            if isinstance(value, dict) and key in value:
-                value = value[key]
-            else:
-                return default
-
-        return value
-
-    def set(self, key_path: str, value: Any):
-        """
-        Set configuration value by dot-separated key path
-
-        Args:
-            key_path: Dot-separated key path
-            value: Value to set
-        """
-        keys = key_path.split('.')
-        config = self.config
-
-        for key in keys[:-1]:
-            if key not in config:
-                config[key] = {}
-            config = config[key]
-
-        config[keys[-1]] = value
-
-    def save(self, filepath: str):
-        """
-        Save configuration to YAML file
-
-        Args:
-            filepath: Path to save configuration
-        """
-        with open(filepath, 'w') as f:
-            yaml.dump(self.config, f, default_flow_style=False)
-        logger.info(f"Configuration saved to {filepath}")
-
-    def __getitem__(self, key: str) -> Any:
-        """Dict-like access to config"""
-        return self.config[key]
-
-    def __setitem__(self, key: str, value: Any):
-        """Dict-like setting of config"""
-        self.config[key] = value
+    """Master configuration object"""
+    detection: DetectionConfig = DetectionConfig()
+    tracker: TrackerConfig = TrackerConfig()
+    stream: StreamConfig = StreamConfig()
+    web_stream: WebStreamConfig = WebStreamConfig()
+    database: DatabaseConfig = DatabaseConfig()
+    system: SystemConfig = SystemConfig()
 
 
 # Global config instance
-_config = None
+config = Config()
 
 
-def get_config(config_file: Optional[str] = None) -> Config:
-    """
-    Get global configuration instance
+def load_config_from_env():
+    """Load configuration from environment variables"""
+    # Stream settings
+    if rtsp_url := os.getenv('RTSP_URL'):
+        config.stream.rtsp_url = rtsp_url
+    
+    # Detection settings
+    if det_interval := os.getenv('DETECTION_INTERVAL'):
+        config.detection.detection_interval = int(det_interval)
+    
+    if det_thresh := os.getenv('DETECTION_THRESHOLD'):
+        config.detection.det_thresh = float(det_thresh)
+    
+    # System settings
+    if log_level := os.getenv('LOG_LEVEL'):
+        config.system.log_level = log_level
+    
+    # Web stream settings
+    if web_port := os.getenv('WEB_PORT'):
+        config.web_stream.port = int(web_port)
 
-    Args:
-        config_file: Optional path to config file
 
-    Returns:
-        Config instance
-    """
-    global _config
-    if _config is None:
-        _config = Config(config_file)
-    return _config
-
-
-if __name__ == "__main__":
-    # Test configuration
-    config = Config()
-
-    print("Configuration test:")
-    print(f"RTSP URL: {config.get('rtsp.url')}")
-    print(f"Detection threshold: {config.get('detection.threshold')}")
-    print(f"Display enabled: {config.get('display.enabled')}")
-
-    # Test setting
-    config.set('test.value', 123)
-    print(f"Test value: {config.get('test.value')}")
-
-    # Save test
-    # config.save('config_test.yaml')
-    print("\nConfiguration loaded successfully")
+# Load environment variables on import
+load_config_from_env()

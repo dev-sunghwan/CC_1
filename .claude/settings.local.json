@@ -14,7 +14,16 @@
       "Bash(tee:*)",
       "Bash(docker-compose up:*)",
       "Bash(docker-compose build:*)",
-      "Bash(docker images:*)"
+      "Bash(docker images:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker cp:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker ps:*)",
+      "Bash(curl:*)"
     ]
   }
 }

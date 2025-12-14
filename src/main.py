@@ -114,16 +114,16 @@ class FaceRecognitionSystem:
         logger.info("Loading face recognition models...")
         self.face_pipeline = FaceRecognitionPipeline(
             detection_size=(640, 640),
-            det_thresh=0.5,
+            det_thresh=0.3,  # 30% confidence threshold (filters out false positives)
             ctx_id=-1  # CPU
         )
 
         # Initialize tracker
         logger.info("Initializing multi-person tracker...")
         self.tracker = BYTETracker(
-            det_thresh=0.5,
-            track_thresh=0.6,
-            match_thresh=0.8
+            det_thresh=0.3,
+            track_thresh=0.5,
+            match_thresh=0.4  # Lower threshold = more lenient matching (better for movement)
         )
 
         # Initialize web streamer
@@ -262,7 +262,7 @@ class FaceRecognitionSystem:
             # Draw bounding box
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
 
-            # Draw track ID and identity
+            # Draw track ID and identity with improved visibility
             track_id = track['track_id']
             identity = track['identity']
             confidence = track.get('identity_confidence', 0.0)
@@ -271,24 +271,42 @@ class FaceRecognitionSystem:
             if identity != 'Unknown':
                 label += f" ({confidence:.2f})"
 
-            # Background for text
-            label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            label_bg_y1 = max(y1 - 25, 0)
-            label_bg_y2 = max(y1 - 5, label_size[1])
+            # Improved font settings
+            font = cv2.FONT_HERSHEY_DUPLEX
+            font_scale = 0.7
+            thickness = 2
 
-            cv2.rectangle(annotated, (x1, label_bg_y1), (x1 + label_size[0], y1), color, -1)
-            cv2.putText(annotated, label, (x1, y1 - 8),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            # Calculate text size
+            (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, thickness)
 
-            # Draw track info
+            # Draw semi-transparent white background for black text
+            label_bg_y1 = max(y1 - text_height - 15, 0)
+            label_bg_y2 = y1 - 2
+
+            overlay = annotated.copy()
+            cv2.rectangle(overlay, (x1, label_bg_y1), (x1 + text_width + 10, label_bg_y2), (255, 255, 255), -1)
+            cv2.addWeighted(overlay, 0.8, annotated, 0.2, 0, annotated)
+
+            # Draw label - pure black text
+            text_x = x1 + 5
+            text_y = y1 - 8
+            cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (0, 0, 0), thickness)
+
+            # Draw track info with background
             info = f"Age:{track['age']} Hits:{track['hits']}"
-            cv2.putText(annotated, info, (x1, y2 + 15),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            info_font_scale = 0.5
+            info_thickness = 1
+            (info_width, info_height), _ = cv2.getTextSize(info, font, info_font_scale, info_thickness)
 
-        # Draw system info
-        info_y = 30
-        cv2.rectangle(annotated, (5, 5), (400, info_y * 4), (0, 0, 0), -1)
+            info_y = y2 + 5
+            overlay2 = annotated.copy()
+            cv2.rectangle(overlay2, (x1, info_y), (x1 + info_width + 10, info_y + info_height + 10), (255, 255, 255), -1)
+            cv2.addWeighted(overlay2, 0.8, annotated, 0.2, 0, annotated)
 
+            info_text_y = info_y + info_height + 3
+            cv2.putText(annotated, info, (x1 + 5, info_text_y), font, info_font_scale, (0, 0, 0), info_thickness)
+
+        # Draw system info with improved visibility
         info_lines = [
             f"FPS: {self.stats['fps']:.2f}",
             f"Frames: {self.stats['frames_processed']}",
@@ -296,9 +314,25 @@ class FaceRecognitionSystem:
             f"Total Faces: {self.stats['faces_detected']}"
         ]
 
+        # Calculate required height for info panel
+        info_font = cv2.FONT_HERSHEY_DUPLEX
+        info_font_scale = 0.6
+        info_thickness = 2
+        line_height = 30
+
+        # Draw semi-transparent background for system info
+        panel_height = len(info_lines) * line_height + 10
+        overlay3 = annotated.copy()
+        cv2.rectangle(overlay3, (5, 5), (420, panel_height), (0, 0, 0), -1)
+        cv2.addWeighted(overlay3, 0.7, annotated, 0.3, 0, annotated)
+
+        # Draw each info line with outline
         for i, line in enumerate(info_lines):
-            cv2.putText(annotated, line, (10, info_y * (i + 1)),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            text_y = line_height * (i + 1)
+            # Black outline
+            cv2.putText(annotated, line, (10, text_y), info_font, info_font_scale, (0, 0, 0), info_thickness + 2)
+            # Bright green text
+            cv2.putText(annotated, line, (10, text_y), info_font, info_font_scale, (0, 255, 0), info_thickness)
 
         return annotated
 

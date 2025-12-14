@@ -14,9 +14,9 @@ onnxruntime>=1.16.0
 scikit-learn>=1.3.0
 scikit-image>=0.21.0
 
-# Deep learning
-torch>=2.0.0
-torchvision>=0.15.0
+# Deep learning (removed torch/torchvision - not used, saves ~2GB)
+# torch>=2.0.0
+# torchvision>=0.15.0
 
 # Utilities
 pyyaml>=6.0
@@ -26,6 +26,9 @@ tqdm>=4.66.0
 # Logging and monitoring
 coloredlogs>=15.0
 python-json-logger>=2.0.0
+
+# Optimization (for Hungarian algorithm)
+scipy>=1.10.0
 
 # Web streaming
 flask>=3.0.0

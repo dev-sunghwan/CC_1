@@ -7,6 +7,7 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional
 from collections import deque
 import logging
+from scipy.optimize import linear_sum_assignment
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,22 +83,24 @@ class Track:
         self.track_id = Track._id_counter
         Track._id_counter += 1
 
-        self.kalman = KalmanFilter()
-        self.update_bbox(bbox, score, embedding)
-
+        # Initialize ALL attributes BEFORE calling update_bbox
         self.hits = 1
         self.age = 0
         self.time_since_update = 0
-
         self.state = 'tentative'  # tentative, confirmed, deleted
 
         # Identity tracking
         self.embeddings = deque(maxlen=30)  # Store recent embeddings
-        if embedding is not None:
-            self.embeddings.append(embedding)
-
         self.identity = 'Unknown'
         self.identity_confidence = 0.0
+
+        # Now safe to call update_bbox
+        self.kalman = KalmanFilter()
+        self.update_bbox(bbox, score, embedding)
+
+        # Add embedding after update_bbox if provided
+        if embedding is not None:
+            self.embeddings.append(embedding)
 
     def update_bbox(self, bbox: np.ndarray, score: float, embedding: Optional[np.ndarray] = None):
         """Update track with new detection"""
@@ -218,9 +221,11 @@ class BYTETracker:
         high_det = [d for d in detections if d['det_score'] >= self.track_thresh]
         low_det = [d for d in detections if self.det_thresh <= d['det_score'] < self.track_thresh]
 
-        # First association: high confidence detections with confirmed tracks
-        confirmed_tracks = [t for t in self.tracks if t.state == 'confirmed']
-        unmatched_tracks, unmatched_det = self._match_detections(confirmed_tracks, high_det)
+        logger.debug(f"Frame {self.frame_id}: {len(detections)} total detections -> {len(high_det)} high, {len(low_det)} low")
+
+        # First association: high confidence detections with all active tracks (both tentative and confirmed)
+        active_tracks = [t for t in self.tracks if t.state != 'deleted']
+        unmatched_tracks, unmatched_det = self._match_detections(active_tracks, high_det)
 
         # Second association: remaining tracks with low confidence detections
         unmatched_tracks_second, unmatched_det_low = self._match_detections(
@@ -231,9 +236,18 @@ class BYTETracker:
         for det_idx in unmatched_det:
             det = high_det[det_idx]
             self._create_track(det)
+            logger.info(f"Created new track from detection: score={det['det_score']:.3f}")
 
         # Remove dead tracks
         self.tracks = [t for t in self.tracks if t.state != 'deleted']
+
+        # Log track status
+        if len(self.tracks) > 0:
+            tentative_count = sum(1 for t in self.tracks if t.state == 'tentative')
+            confirmed_count = sum(1 for t in self.tracks if t.state == 'confirmed')
+            logger.info(f"Total tracks: {len(self.tracks)} (tentative: {tentative_count}, confirmed: {confirmed_count})")
+            for track in self.tracks:
+                logger.debug(f"  Track {track.track_id}: state={track.state}, hits={track.hits}, age={track.age}, score={track.score:.3f}")
 
         # Return active tracks
         active_tracks = []
@@ -287,42 +301,40 @@ class BYTETracker:
         unmatched_tracks = list(range(len(tracks)))
         unmatched_dets = list(range(len(detections)))
 
-        # Greedy matching
-        while len(unmatched_tracks) > 0 and len(unmatched_dets) > 0:
-            # Find best match
-            best_score = -1
-            best_track = -1
-            best_det = -1
+        # Hungarian algorithm for optimal matching
+        # Negate cost matrix for minimization (linear_sum_assignment minimizes)
+        cost_matrix_negative = -cost_matrix
 
-            for i in unmatched_tracks:
-                for j in unmatched_dets:
-                    if cost_matrix[i, j] > best_score:
-                        best_score = cost_matrix[i, j]
-                        best_track = i
-                        best_det = j
+        # Use Hungarian algorithm for optimal assignment
+        row_indices, col_indices = linear_sum_assignment(cost_matrix_negative)
 
-            # Check if match is good enough
-            if best_score < self.match_thresh * 0.5:  # Adjust threshold
-                break
+        # Filter matches by threshold and update tracks
+        matched_tracks = []
+        matched_dets = []
 
-            # Update track
-            tracks[best_track].update_bbox(
-                np.array(detections[best_det]['bbox']),
-                detections[best_det]['det_score'],
-                np.array(detections[best_det].get('embedding'))
-            )
-
-            # Update identity if available
-            if 'identity' in detections[best_det]:
-                tracks[best_track].update_identity(
-                    detections[best_det]['identity'],
-                    detections[best_det].get('similarity', 0.0)
+        for row_idx, col_idx in zip(row_indices, col_indices):
+            # Check if match quality is good enough
+            if cost_matrix[row_idx, col_idx] >= self.match_thresh * 0.5:
+                # Update track with matched detection
+                tracks[row_idx].update_bbox(
+                    np.array(detections[col_idx]['bbox']),
+                    detections[col_idx]['det_score'],
+                    np.array(detections[col_idx].get('embedding'))
                 )
 
-            matched_tracks.append(best_track)
-            matched_dets.append(best_det)
-            unmatched_tracks.remove(best_track)
-            unmatched_dets.remove(best_det)
+                # Update identity if available
+                if 'identity' in detections[col_idx]:
+                    tracks[row_idx].update_identity(
+                        detections[col_idx]['identity'],
+                        detections[col_idx].get('similarity', 0.0)
+                    )
+
+                matched_tracks.append(row_idx)
+                matched_dets.append(col_idx)
+
+        # Calculate unmatched tracks and detections
+        unmatched_tracks = [i for i in range(len(tracks)) if i not in matched_tracks]
+        unmatched_dets = [j for j in range(len(detections)) if j not in matched_dets]
 
         return unmatched_tracks, unmatched_dets
 

@@ -12,6 +12,9 @@ from insightface.app import FaceAnalysis
 from insightface.utils import face_align
 import pickle
 import json
+import shutil
+import time
+import glob
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
@@ -66,10 +69,19 @@ class FaceRecognitionPipeline:
             List of face dictionaries with bbox, landmarks, embedding, etc.
         """
         if frame is None:
+            logger.warning("detect_and_extract: frame is None")
             return []
+
+        # Log frame info
+        logger.debug(f"Running detection on frame: {frame.shape}")
 
         # Run face analysis
         faces = self.app.get(frame)
+
+        logger.info(f"InsightFace detected {len(faces)} faces")
+        if len(faces) > 0:
+            for i, face in enumerate(faces):
+                logger.info(f"  Face {i+1}: bbox={face.bbox.astype(int).tolist()}, score={face.det_score:.3f}")
 
         # Convert to standardized format
         results = []
@@ -140,18 +152,56 @@ class FaceRecognitionPipeline:
         }
         logger.info(f"Added {person_id} to face database")
 
-    def save_database(self, filepath: str = "face_database.pkl"):
+    def save_database(self, filepath: str = "/app/data/face_database.pkl", backup: bool = True):
         """
-        Save face database to disk
+        Save face database to disk with automatic backup
 
         Args:
             filepath: Path to save database
+            backup: Whether to create backup of existing database
         """
-        with open(filepath, 'wb') as f:
-            pickle.dump(self.face_database, f)
-        logger.info(f"Face database saved to {filepath}")
+        # Create backup of existing database
+        if backup and Path(filepath).exists():
+            backup_path = filepath.replace('.pkl', f'_backup_{int(time.time())}.pkl')
+            try:
+                shutil.copy(filepath, backup_path)
+                logger.info(f"Created backup: {backup_path}")
 
-    def load_database(self, filepath: str = "face_database.pkl"):
+                # Cleanup old backups (keep last 5)
+                self._cleanup_old_backups(filepath, max_backups=5)
+            except Exception as e:
+                logger.warning(f"Failed to create backup: {e}")
+
+        # Save database
+        try:
+            with open(filepath, 'wb') as f:
+                pickle.dump(self.face_database, f)
+            logger.info(f"Face database saved to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save database: {e}")
+            raise
+
+    def _cleanup_old_backups(self, filepath: str, max_backups: int = 5):
+        """
+        Cleanup old backup files
+
+        Args:
+            filepath: Original database filepath
+            max_backups: Maximum number of backups to keep
+        """
+        backup_pattern = filepath.replace('.pkl', '_backup_*.pkl')
+        backups = sorted(glob.glob(backup_pattern))
+
+        # Remove oldest backups
+        while len(backups) > max_backups:
+            oldest = backups.pop(0)
+            try:
+                Path(oldest).unlink()
+                logger.debug(f"Removed old backup: {oldest}")
+            except Exception as e:
+                logger.warning(f"Failed to remove old backup {oldest}: {e}")
+
+    def load_database(self, filepath: str = "/app/data/face_database.pkl"):
         """
         Load face database from disk
 
@@ -226,23 +276,53 @@ class FaceRecognitionPipeline:
                 for lm in face['landmarks']:
                     cv2.circle(annotated, tuple(lm), 2, (255, 255, 0), -1)
 
-            # Draw identity and confidence
+            # Draw identity and confidence with improved visibility
             identity = face.get('identity', 'Unknown')
             similarity = face.get('similarity', 0.0)
             det_score = face.get('det_score', 0.0)
 
+            # Main label (name and confidence)
             label = f"{identity} ({similarity:.2f})"
-            label_bg_y1 = max(y1 - 30, 0)
-            label_bg_y2 = y1
 
-            cv2.rectangle(annotated, (x1, label_bg_y1), (x2, label_bg_y2), color, -1)
-            cv2.putText(annotated, label, (x1 + 5, y1 - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            # Calculate text size for proper background sizing
+            font = cv2.FONT_HERSHEY_DUPLEX
+            font_scale = 0.7
+            thickness = 2
+            (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, thickness)
 
-            # Draw additional info
+            # Draw semi-transparent white background for black text
+            label_bg_y1 = max(y1 - text_height - 15, 0)
+            label_bg_y2 = y1 - 2
+
+            # Create overlay for semi-transparency
+            overlay = annotated.copy()
+            cv2.rectangle(overlay, (x1, label_bg_y1), (x1 + text_width + 10, label_bg_y2), (255, 255, 255), -1)
+            cv2.addWeighted(overlay, 0.8, annotated, 0.2, 0, annotated)
+
+            # Draw main label with outline for extra visibility
+            text_x = x1 + 5
+            text_y = y1 - 8
+
+            # Draw pure black text
+            cv2.putText(annotated, label, (text_x, text_y),
+                       font, font_scale, (0, 0, 0), thickness)
+
+            # Draw additional info below bbox with background
             info = f"Age: {face.get('age', 'N/A')} | Gender: {'M' if face.get('gender') == 1 else 'F'}"
-            cv2.putText(annotated, info, (x1, y2 + 20),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            info_font_scale = 0.5
+            info_thickness = 1
+            (info_width, info_height), info_baseline = cv2.getTextSize(info, font, info_font_scale, info_thickness)
+
+            # Background for info text
+            info_y = y2 + 5
+            overlay2 = annotated.copy()
+            cv2.rectangle(overlay2, (x1, info_y), (x1 + info_width + 10, info_y + info_height + 10), (255, 255, 255), -1)
+            cv2.addWeighted(overlay2, 0.8, annotated, 0.2, 0, annotated)
+
+            # Draw info text - pure black
+            info_text_y = info_y + info_height + 3
+            cv2.putText(annotated, info, (x1 + 5, info_text_y),
+                       font, info_font_scale, (0, 0, 0), info_thickness)
 
         return annotated
 

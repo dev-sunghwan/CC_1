@@ -20,6 +20,7 @@ services:
 
     # Volumes for persistent data
     volumes:
+      - ./src:/app/src  # Mount source code for live updates
       - ./data:/app/data
       - ./logs:/app/logs
       - ./output:/app/output
@@ -46,7 +47,7 @@ services:
     restart: unless-stopped
 
     # Command override (optional)
-    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp} --no-display
+    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp} --detection-interval 2 --no-display
 
     # Logging configuration
     logging:
