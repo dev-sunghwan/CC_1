@@ -75,6 +75,7 @@ class WebStreamer:
                         padding: 20px;
                         border-radius: 10px;
                         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                        position: relative;
                     }
                     img {
                         width: 100%;
@@ -95,19 +96,173 @@ class WebStreamer:
                         color: white;
                         border-radius: 3px;
                         margin-top: 10px;
+                        transition: background-color 0.3s;
+                    }
+                    .status.reconnecting {
+                        background-color: #ff9800;
+                        animation: pulse 1.5s ease-in-out infinite;
+                    }
+                    .status.error {
+                        background-color: #f44336;
+                    }
+                    @keyframes pulse {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0.5; }
+                    }
+                    .overlay {
+                        position: absolute;
+                        top: 20px;
+                        left: 20px;
+                        right: 20px;
+                        background-color: rgba(255, 152, 0, 0.9);
+                        color: white;
+                        padding: 15px;
+                        border-radius: 5px;
+                        display: none;
+                        text-align: center;
+                        font-weight: bold;
+                    }
+                    .overlay.show {
+                        display: block;
                     }
                 </style>
             </head>
             <body>
                 <h1>Face Recognition System - Live Stream</h1>
                 <div class="stream-container">
-                    <img src="{{ url_for('video_feed') }}" alt="Live Stream">
+                    <div id="reconnectOverlay" class="overlay">
+                        ⚠️ Stream frozen - Auto-reconnecting in <span id="countdown">5</span>s...
+                    </div>
+                    <img id="streamImage" src="{{ url_for('video_feed') }}" alt="Live Stream">
                     <div class="info">
                         <p><strong>Stream URL:</strong> <code>http://localhost:8080/video_feed</code></p>
-                        <p><strong>Status:</strong> <span class="status">LIVE</span></p>
+                        <p><strong>Status:</strong> <span id="statusIndicator" class="status">LIVE</span></p>
                         <p>Streaming from RTSP camera with face detection and tracking</p>
+                        <p><small>Last updated: <span id="lastUpdate">Just now</span></small></p>
                     </div>
                 </div>
+
+                <script>
+                    let lastImageUpdate = Date.now();
+                    let reconnectTimer = null;
+                    let countdownTimer = null;
+                    let countdownValue = 10;
+                    const FREEZE_TIMEOUT = 10000; // 10 seconds without update = frozen
+                    const RECONNECT_DELAY = 10000; // Wait 10 seconds before reconnecting
+
+                    // Monitor image load events
+                    const streamImage = document.getElementById('streamImage');
+                    const statusIndicator = document.getElementById('statusIndicator');
+                    const overlay = document.getElementById('reconnectOverlay');
+                    const countdownSpan = document.getElementById('countdown');
+                    const lastUpdateSpan = document.getElementById('lastUpdate');
+
+                    // Update timestamp when image loads
+                    streamImage.addEventListener('load', function() {
+                        lastImageUpdate = Date.now();
+                        resetReconnectTimer();
+                        updateStatus('live');
+                    });
+
+                    // Detect errors
+                    streamImage.addEventListener('error', function() {
+                        console.log('Stream error detected');
+                        updateStatus('error');
+                        scheduleReconnect();
+                    });
+
+                    // Check for frozen stream periodically
+                    setInterval(function() {
+                        const timeSinceUpdate = Date.now() - lastImageUpdate;
+
+                        // Update "last updated" text
+                        if (timeSinceUpdate < 2000) {
+                            lastUpdateSpan.textContent = 'Just now';
+                        } else if (timeSinceUpdate < 60000) {
+                            lastUpdateSpan.textContent = Math.floor(timeSinceUpdate / 1000) + 's ago';
+                        } else {
+                            lastUpdateSpan.textContent = Math.floor(timeSinceUpdate / 60000) + 'm ago';
+                        }
+
+                        // Detect freeze
+                        if (timeSinceUpdate > FREEZE_TIMEOUT && !reconnectTimer) {
+                            console.log('Stream appears frozen - scheduling reconnect');
+                            updateStatus('reconnecting');
+                            scheduleReconnect();
+                        }
+                    }, 1000);
+
+                    function updateStatus(status) {
+                        statusIndicator.className = 'status';
+
+                        if (status === 'live') {
+                            statusIndicator.textContent = 'LIVE';
+                            statusIndicator.classList.add('live');
+                            overlay.classList.remove('show');
+                        } else if (status === 'reconnecting') {
+                            statusIndicator.textContent = 'RECONNECTING...';
+                            statusIndicator.classList.add('reconnecting');
+                        } else if (status === 'error') {
+                            statusIndicator.textContent = 'ERROR';
+                            statusIndicator.classList.add('error');
+                        }
+                    }
+
+                    function scheduleReconnect() {
+                        if (reconnectTimer) return; // Already scheduled
+
+                        overlay.classList.add('show');
+                        countdownValue = Math.floor(RECONNECT_DELAY / 1000);
+                        countdownSpan.textContent = countdownValue;
+
+                        // Countdown display
+                        countdownTimer = setInterval(function() {
+                            countdownValue--;
+                            countdownSpan.textContent = countdownValue;
+                            if (countdownValue <= 0) {
+                                clearInterval(countdownTimer);
+                            }
+                        }, 1000);
+
+                        // Actual reconnect
+                        reconnectTimer = setTimeout(function() {
+                            console.log('Reconnecting stream...');
+                            reconnectStream();
+                        }, RECONNECT_DELAY);
+                    }
+
+                    function resetReconnectTimer() {
+                        if (reconnectTimer) {
+                            clearTimeout(reconnectTimer);
+                            reconnectTimer = null;
+                        }
+                        if (countdownTimer) {
+                            clearInterval(countdownTimer);
+                            countdownTimer = null;
+                        }
+                        overlay.classList.remove('show');
+                    }
+
+                    function reconnectStream() {
+                        // Force reload by adding timestamp
+                        const timestamp = new Date().getTime();
+                        const baseUrl = "{{ url_for('video_feed') }}";
+                        streamImage.src = baseUrl + '?t=' + timestamp;
+
+                        reconnectTimer = null;
+                        lastImageUpdate = Date.now();
+                    }
+
+                    // Manual refresh with Ctrl+R or F5
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+                            e.preventDefault();
+                            reconnectStream();
+                        }
+                    });
+
+                    console.log('Stream monitoring active - will auto-reconnect if frozen for ' + (FREEZE_TIMEOUT/1000) + 's');
+                </script>
             </body>
             </html>
             """

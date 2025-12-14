@@ -93,6 +93,139 @@ Successfully registered Alice!
 
 ---
 
+## Improving Recognition Accuracy (Update Existing Faces)
+
+### Why Update Embeddings?
+
+If a registered person's recognition accuracy is low (similarity score < 0.65), you can improve it by adding more face samples from different angles. This increases the similarity score from ~0.50-0.60 to **0.65-0.85** or higher!
+
+### Quick Start: Update Existing Person
+
+To add more face samples for better accuracy:
+
+```bash
+python update_person_embeddings.py
+```
+
+The script will:
+1. Show all registered people and their current embedding counts
+2. Ask which person to update
+3. Ask how many additional samples to capture (default: 2, recommended)
+4. Guide you through capturing different poses
+
+### How the Update Process Works
+
+#### Step 1: Run the Update Helper
+```bash
+python update_person_embeddings.py
+```
+
+#### Step 2: Select Person to Update
+The system shows all registered people:
+```
+People in database:
+  - SungHwan (1 embedding(s))
+  - JeeYoung (1 embedding(s))
+
+Enter the name of the person to update: SungHwan
+```
+
+#### Step 3: Choose Number of Samples
+```
+Number of additional samples to capture (default: 2): 2
+```
+
+**Recommended:** 2 additional samples (total of 3 embeddings)
+- More samples = better accuracy
+- Diminishing returns after 3-4 samples
+
+#### Step 4: Follow Guided Pose Instructions
+
+The system will guide you through different poses:
+
+**Sample 1:**
+```
+Face the camera directly and stay still...
+Capturing in 3 seconds...
+  3...
+  2...
+  1...
+Capturing frames... (hold position for 3 seconds)
+```
+
+**Sample 2:**
+```
+Turn your head SLIGHTLY to the LEFT and hold...
+Capturing in 3 seconds...
+  3...
+  2...
+  1...
+Capturing frames... (hold position for 3 seconds)
+```
+
+**Sample 3 (if requested):**
+```
+Turn your head SLIGHTLY to the RIGHT and hold...
+```
+
+#### Step 5: Restart System
+
+After updating, restart the system to activate the improved recognition:
+
+```bash
+docker-compose restart face-recognition
+```
+
+### Example: Before and After
+
+**Before Update (1 embedding):**
+```
+SungHwan (0.52)  ← Low similarity score
+```
+
+**After Update (3 embeddings):**
+```
+SungHwan (0.82)  ← Much higher similarity score!
+```
+
+### When to Update Embeddings
+
+Update embeddings when:
+- Recognition similarity score is consistently below 0.65
+- Person is often misidentified as "Unknown"
+- Person's appearance has changed (glasses, facial hair, etc.)
+- Lighting conditions are different from registration
+
+### Tips for Best Update Results
+
+1. **Vary Your Poses:**
+   - Turn head slightly left (not extreme)
+   - Turn head slightly right (not extreme)
+   - Look directly at camera
+   - Slight tilt up or down
+
+2. **Maintain Good Lighting:**
+   - Well-lit face (no shadows)
+   - Avoid backlighting
+
+3. **Stay Still During Capture:**
+   - Hold each pose for the full 3 seconds
+   - Avoid moving or talking
+
+4. **Keep Same Person:**
+   - Only the registered person should be in frame
+   - System will verify it's the same person by comparing with existing embeddings
+
+### Advanced: Direct Update Command
+
+If you prefer to skip the helper script:
+
+```bash
+docker exec face_recognition_system python3 src/update_embeddings.py --name "PersonName" --samples 2
+```
+
+---
+
 ## Advanced: Direct Command
 
 If you prefer, you can register directly using:

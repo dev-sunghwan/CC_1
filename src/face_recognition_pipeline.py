@@ -100,7 +100,7 @@ class FaceRecognitionPipeline:
 
     def recognize_faces(self, faces: List[Dict], threshold: float = 0.4) -> List[Dict]:
         """
-        Match detected faces against database
+        Match detected faces against database (supports both single and multi-embedding formats)
 
         Args:
             faces: List of detected faces with embeddings
@@ -117,13 +117,23 @@ class FaceRecognitionPipeline:
 
             # Compare with all known faces
             for person_id, person_data in self.face_database.items():
-                db_embedding = np.array(person_data['embedding'])
+                # Support both old (single embedding) and new (multi-embedding) formats
+                if 'embeddings' in person_data:
+                    # New format: multiple embeddings per person
+                    db_embeddings = [np.array(emb) for emb in person_data['embeddings']]
 
-                # Cosine similarity
-                similarity = np.dot(embedding, db_embedding)
+                    # Compare against ALL embeddings, use BEST match
+                    person_best_similarity = max(
+                        np.dot(embedding, db_emb) for db_emb in db_embeddings
+                    )
+                else:
+                    # Old format: single embedding (backward compatible)
+                    db_embedding = np.array(person_data['embedding'])
+                    person_best_similarity = np.dot(embedding, db_embedding)
 
-                if similarity > best_similarity:
-                    best_similarity = similarity
+                # Update best match if this person has higher similarity
+                if person_best_similarity > best_similarity:
+                    best_similarity = person_best_similarity
                     best_match = person_id
 
             # Add recognition result
@@ -136,21 +146,39 @@ class FaceRecognitionPipeline:
 
         return faces
 
-    def add_face_to_database(self, person_id: str, embedding: np.ndarray,
+    def add_face_to_database(self, person_id: str, embeddings,
                             metadata: Optional[Dict] = None):
         """
-        Add a face to the recognition database
+        Add a face to the recognition database (supports single or multiple embeddings)
 
         Args:
             person_id: Unique identifier for the person
-            embedding: Face embedding vector
+            embeddings: Single embedding (np.ndarray) or list of embeddings
             metadata: Additional metadata (name, role, etc.)
         """
+        # Convert to list if single embedding provided
+        if isinstance(embeddings, np.ndarray):
+            embedding_list = [embeddings.tolist()]
+        elif isinstance(embeddings, list):
+            # Check if it's a list of embeddings or a single embedding as list
+            if len(embeddings) > 0 and isinstance(embeddings[0], (list, np.ndarray)):
+                # List of embeddings
+                embedding_list = [
+                    emb.tolist() if isinstance(emb, np.ndarray) else emb
+                    for emb in embeddings
+                ]
+            else:
+                # Single embedding as list
+                embedding_list = [embeddings]
+        else:
+            embedding_list = [embeddings]
+
         self.face_database[person_id] = {
-            'embedding': embedding.tolist() if isinstance(embedding, np.ndarray) else embedding,
-            'metadata': metadata or {}
+            'embeddings': embedding_list,
+            'metadata': metadata or {},
+            'embedding_count': len(embedding_list)
         }
-        logger.info(f"Added {person_id} to face database")
+        logger.info(f"Added {person_id} to face database with {len(embedding_list)} embedding(s)")
 
     def save_database(self, filepath: str = "/app/data/face_database.pkl", backup: bool = True):
         """

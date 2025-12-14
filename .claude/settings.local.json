@@ -23,7 +23,8 @@
       "Bash(docker-compose restart:*)",
       "Bash(docker logs:*)",
       "Bash(docker ps:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(where.exe:*)"
     ]
   }
 }
