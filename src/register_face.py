@@ -37,11 +37,22 @@ def filter_unknown_faces(faces, pipeline, threshold=0.4):
         best_similarity = -1.0
 
         for person_id, person_data in pipeline.face_database.items():
-            db_embedding = np.array(person_data['embedding'])
-            similarity = np.dot(embedding, db_embedding)
+            # Support both old (single embedding) and new (multi-embedding) formats
+            if 'embeddings' in person_data:
+                # New format: multiple embeddings per person
+                db_embeddings = [np.array(emb) for emb in person_data['embeddings']]
 
-            if similarity > best_similarity:
-                best_similarity = similarity
+                # Compare against ALL embeddings, use BEST match
+                person_best_similarity = max(
+                    np.dot(embedding, db_emb) for db_emb in db_embeddings
+                )
+            else:
+                # Old format: single embedding (backward compatible)
+                db_embedding = np.array(person_data['embedding'])
+                person_best_similarity = np.dot(embedding, db_embedding)
+
+            if person_best_similarity > best_similarity:
+                best_similarity = person_best_similarity
                 best_match = person_id
 
         # Mark if this is a known face

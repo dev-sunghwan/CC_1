@@ -26,6 +26,7 @@ services:
       - ./output:/app/output
       - ./models:/app/models
       - ./config:/app/config
+      - ./insightface_models:/root/.insightface  # Persist InsightFace models (buffalo_l)
       # X11 socket for display (Linux only - not needed on Windows)
       # - /tmp/.X11-unix:/tmp/.X11-unix:rw
 
