@@ -130,6 +130,8 @@ class FaceRecognitionSystem:
         if self.web_streaming:
             logger.info(f"Initializing web streamer on port {self.web_port}...")
             self.web_streamer = WebStreamer(host='0.0.0.0', port=self.web_port)
+            self.web_streamer.set_tracker_reference(self.tracker)
+            self.web_streamer.face_database = self.face_pipeline.face_database
             self.web_streamer.start()
 
         logger.info("System initialized successfully")
@@ -305,35 +307,7 @@ class FaceRecognitionSystem:
 
             info_text_y = info_y + info_height + 3
             cv2.putText(annotated, info, (x1 + 5, info_text_y), font, info_font_scale, (0, 0, 0), info_thickness)
-
-        # Draw system info with improved visibility
-        info_lines = [
-            f"FPS: {self.stats['fps']:.2f}",
-            f"Frames: {self.stats['frames_processed']}",
-            f"Active Tracks: {len(tracks)}",
-            f"Total Faces: {self.stats['faces_detected']}"
-        ]
-
-        # Calculate required height for info panel
-        info_font = cv2.FONT_HERSHEY_DUPLEX
-        info_font_scale = 0.6
-        info_thickness = 2
-        line_height = 30
-
-        # Draw semi-transparent background for system info
-        panel_height = len(info_lines) * line_height + 10
-        overlay3 = annotated.copy()
-        cv2.rectangle(overlay3, (5, 5), (420, panel_height), (0, 0, 0), -1)
-        cv2.addWeighted(overlay3, 0.7, annotated, 0.3, 0, annotated)
-
-        # Draw each info line with outline
-        for i, line in enumerate(info_lines):
-            text_y = line_height * (i + 1)
-            # Black outline
-            cv2.putText(annotated, line, (10, text_y), info_font, info_font_scale, (0, 0, 0), info_thickness + 2)
-            # Bright green text
-            cv2.putText(annotated, line, (10, text_y), info_font, info_font_scale, (0, 255, 0), info_thickness)
-
+        # System info now displayed in web UI dashboard - no overlay needed
         return annotated
 
     def start(self):
