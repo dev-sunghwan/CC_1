@@ -148,8 +148,8 @@ class FaceRecognitionSystem:
 
                 if frame is None:
                     if not self.stream_capture.is_alive():
-                        logger.error("Stream is not alive!")
-                        break
+                        logger.warning("Stream is not alive, waiting for reconnection...")
+                        time.sleep(2.0)  # Wait for stream_capture to reconnect
                     continue
 
                 frame_count += 1
@@ -238,7 +238,7 @@ class FaceRecognitionSystem:
 
     def _draw_results(self, frame: np.ndarray, tracks: list) -> np.ndarray:
         """
-        Draw tracking results on frame
+        Draw tracking results on frame with enhanced visual overlays
 
         Args:
             frame: Input frame
@@ -255,27 +255,37 @@ class FaceRecognitionSystem:
             bbox = track['bbox']
             x1, y1, x2, y2 = bbox
 
-            # Color based on identity
-            if track['identity'] == 'Unknown':
-                color = (0, 0, 255)  # Red
-            else:
-                color = (0, 255, 0)  # Green
-
-            # Draw bounding box
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-
-            # Draw track ID and identity with improved visibility
-            track_id = track['track_id']
+            # Get confidence
             identity = track['identity']
             confidence = track.get('identity_confidence', 0.0)
 
+            # Color-coded by confidence (Phase 4: Enhanced Visual Overlays)
+            if identity == 'Unknown':
+                color = (0, 0, 255)  # Red
+                border_color = (0, 0, 200)  # Darker red for outer border
+            elif confidence >= 0.7:
+                color = (0, 255, 0)  # Green (high confidence)
+                border_color = (0, 200, 0)  # Darker green
+            elif confidence >= 0.5:
+                color = (0, 255, 255)  # Yellow (medium confidence)
+                border_color = (0, 200, 200)  # Darker yellow
+            else:
+                color = (0, 165, 255)  # Orange (low confidence)
+                border_color = (0, 130, 200)  # Darker orange
+
+            # Draw double-bordered bounding box for better visibility
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), border_color, 4)  # Outer dark border
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)  # Inner bright border
+
+            # Draw track ID and identity with improved visibility
+            track_id = track['track_id']
             label = f"ID:{track_id} | {identity}"
             if identity != 'Unknown':
                 label += f" ({confidence:.2f})"
 
-            # Improved font settings
+            # Larger font for better readability
             font = cv2.FONT_HERSHEY_DUPLEX
-            font_scale = 0.7
+            font_scale = 0.9  # Increased from 0.7
             thickness = 2
 
             # Calculate text size
@@ -287,25 +297,58 @@ class FaceRecognitionSystem:
 
             overlay = annotated.copy()
             cv2.rectangle(overlay, (x1, label_bg_y1), (x1 + text_width + 10, label_bg_y2), (255, 255, 255), -1)
-            cv2.addWeighted(overlay, 0.8, annotated, 0.2, 0, annotated)
+            cv2.addWeighted(overlay, 0.85, annotated, 0.15, 0, annotated)  # More opaque background
 
-            # Draw label - pure black text
+            # Draw label - pure black text with shadow for readability
             text_x = x1 + 5
             text_y = y1 - 8
+            # Text shadow
+            cv2.putText(annotated, label, (text_x + 1, text_y + 1), font, font_scale, (128, 128, 128), thickness)
+            # Main text
             cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (0, 0, 0), thickness)
+
+            # Draw confidence bar for known identities
+            if identity != 'Unknown' and confidence > 0:
+                bar_y = y2 + 8
+                bar_height = 8
+                bar_max_width = x2 - x1
+                bar_width = int(bar_max_width * confidence)
+
+                # Background bar (gray)
+                cv2.rectangle(annotated, (x1, bar_y), (x2, bar_y + bar_height), (100, 100, 100), -1)
+
+                # Confidence bar (color-coded)
+                if confidence >= 0.7:
+                    bar_color = (0, 255, 0)  # Green
+                elif confidence >= 0.5:
+                    bar_color = (0, 255, 255)  # Yellow
+                else:
+                    bar_color = (0, 165, 255)  # Orange
+
+                cv2.rectangle(annotated, (x1, bar_y), (x1 + bar_width, bar_y + bar_height), bar_color, -1)
+
+                # Bar border
+                cv2.rectangle(annotated, (x1, bar_y), (x2, bar_y + bar_height), (255, 255, 255), 1)
+
+                # Update info position to be below confidence bar
+                info_y = bar_y + bar_height + 5
+            else:
+                info_y = y2 + 5
 
             # Draw track info with background
             info = f"Age:{track['age']} Hits:{track['hits']}"
-            info_font_scale = 0.5
+            info_font_scale = 0.6  # Slightly larger
             info_thickness = 1
             (info_width, info_height), _ = cv2.getTextSize(info, font, info_font_scale, info_thickness)
 
-            info_y = y2 + 5
             overlay2 = annotated.copy()
             cv2.rectangle(overlay2, (x1, info_y), (x1 + info_width + 10, info_y + info_height + 10), (255, 255, 255), -1)
-            cv2.addWeighted(overlay2, 0.8, annotated, 0.2, 0, annotated)
+            cv2.addWeighted(overlay2, 0.85, annotated, 0.15, 0, annotated)
 
             info_text_y = info_y + info_height + 3
+            # Info shadow
+            cv2.putText(annotated, info, (x1 + 6, info_text_y + 1), font, info_font_scale, (128, 128, 128), info_thickness)
+            # Main info
             cv2.putText(annotated, info, (x1 + 5, info_text_y), font, info_font_scale, (0, 0, 0), info_thickness)
         # System info now displayed in web UI dashboard - no overlay needed
         return annotated
