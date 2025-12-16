@@ -39,6 +39,10 @@ class WebStreamer:
         self.start_time = None
         self.frame_count = 0
 
+        # Heartbeat monitoring state
+        self.last_frame_update = None
+        self.heartbeat_lock = threading.Lock()
+
         # Setup routes
         self._setup_routes()
 
@@ -131,7 +135,7 @@ class WebStreamer:
                 <h1>Face Recognition System - Live Stream</h1>
                 <div class="stream-container">
                     <div id="reconnectOverlay" class="overlay">
-                        ⚠️ Stream frozen - Auto-reconnecting in <span id="countdown">5</span>s...
+                        ⚠️ Stream frozen - Auto-reconnecting in <span id="countdown">3</span>s...
                     </div>
                     <img id="streamImage" src="{{ url_for('video_feed') }}" alt="Live Stream">
                     <div class="info">
@@ -143,54 +147,96 @@ class WebStreamer:
                 </div>
 
                 <script>
-                    let lastImageUpdate = Date.now();
+                    // Heartbeat monitoring state
+                    let heartbeatInterval = null;
                     let reconnectTimer = null;
                     let countdownTimer = null;
-                    let countdownValue = 10;
-                    const FREEZE_TIMEOUT = 10000; // 10 seconds without update = frozen
-                    const RECONNECT_DELAY = 10000; // Wait 10 seconds before reconnecting
+                    let heartbeatFailures = 0;
+                    const HEARTBEAT_INTERVAL = 2500; // 2.5 seconds
+                    const MAX_HEARTBEAT_FAILURES = 2; // Reconnect after 2 failures
+                    const RECONNECT_DELAY = 3000; // 3 second delay before reconnect
 
-                    // Monitor image load events
+                    // DOM elements
                     const streamImage = document.getElementById('streamImage');
                     const statusIndicator = document.getElementById('statusIndicator');
                     const overlay = document.getElementById('reconnectOverlay');
                     const countdownSpan = document.getElementById('countdown');
                     const lastUpdateSpan = document.getElementById('lastUpdate');
 
-                    // Update timestamp when image loads
+                    // Image load success handler
                     streamImage.addEventListener('load', function() {
-                        lastImageUpdate = Date.now();
                         resetReconnectTimer();
                         updateStatus('live');
                     });
 
-                    // Detect errors
+                    // Image error handler
                     streamImage.addEventListener('error', function() {
-                        console.log('Stream error detected');
+                        console.error('Stream image error');
                         updateStatus('error');
                         scheduleReconnect();
                     });
 
-                    // Check for frozen stream periodically
-                    setInterval(function() {
-                        const timeSinceUpdate = Date.now() - lastImageUpdate;
+                    // Start heartbeat monitoring
+                    function startHeartbeatMonitoring() {
+                        if (heartbeatInterval) return;
 
-                        // Update "last updated" text
-                        if (timeSinceUpdate < 2000) {
-                            lastUpdateSpan.textContent = 'Just now';
-                        } else if (timeSinceUpdate < 60000) {
-                            lastUpdateSpan.textContent = Math.floor(timeSinceUpdate / 1000) + 's ago';
-                        } else {
-                            lastUpdateSpan.textContent = Math.floor(timeSinceUpdate / 60000) + 'm ago';
-                        }
+                        heartbeatInterval = setInterval(async () => {
+                            try {
+                                const controller = new AbortController();
+                                const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-                        // Detect freeze
-                        if (timeSinceUpdate > FREEZE_TIMEOUT && !reconnectTimer) {
-                            console.log('Stream appears frozen - scheduling reconnect');
-                            updateStatus('reconnecting');
-                            scheduleReconnect();
-                        }
-                    }, 1000);
+                                const response = await fetch('/heartbeat', {
+                                    signal: controller.signal
+                                });
+                                clearTimeout(timeoutId);
+
+                                if (!response.ok) {
+                                    throw new Error('Heartbeat request failed');
+                                }
+
+                                const data = await response.json();
+                                heartbeatFailures = 0;
+
+                                // Update last update display
+                                if (data.staleness_seconds !== null) {
+                                    if (data.staleness_seconds < 1) {
+                                        lastUpdateSpan.textContent = 'Just now';
+                                    } else if (data.staleness_seconds < 60) {
+                                        lastUpdateSpan.textContent = Math.round(data.staleness_seconds) + 's ago';
+                                    } else {
+                                        lastUpdateSpan.textContent = Math.floor(data.staleness_seconds / 60) + 'm ago';
+                                    }
+                                } else {
+                                    lastUpdateSpan.textContent = 'Initializing...';
+                                }
+
+                                // Check for stale data
+                                if (data.status === 'stale') {
+                                    console.warn('Stream data is stale - triggering reconnect');
+                                    updateStatus('reconnecting');
+                                    scheduleReconnect();
+                                } else if (data.status === 'degraded') {
+                                    console.warn('Stream degraded - staleness: ' + data.staleness_seconds + 's');
+                                    // Still live but show warning in console
+                                } else if (data.status === 'healthy') {
+                                    updateStatus('live');
+                                }
+
+                            } catch (error) {
+                                console.error('Heartbeat failed:', error.name, error.message);
+                                heartbeatFailures++;
+
+                                if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+                                    console.error('Multiple heartbeat failures - reconnecting');
+                                    updateStatus('error');
+                                    scheduleReconnect();
+                                }
+                            }
+                        }, HEARTBEAT_INTERVAL);
+                    }
+
+                    // Initialize heartbeat monitoring on load
+                    startHeartbeatMonitoring();
 
                     function updateStatus(status) {
                         statusIndicator.className = 'status';
@@ -212,7 +258,7 @@ class WebStreamer:
                         if (reconnectTimer) return; // Already scheduled
 
                         overlay.classList.add('show');
-                        countdownValue = Math.floor(RECONNECT_DELAY / 1000);
+                        let countdownValue = Math.floor(RECONNECT_DELAY / 1000);
                         countdownSpan.textContent = countdownValue;
 
                         // Countdown display
@@ -261,7 +307,7 @@ class WebStreamer:
                         }
                     });
 
-                    console.log('Stream monitoring active - will auto-reconnect if frozen for ' + (FREEZE_TIMEOUT/1000) + 's');
+                    console.log('Heartbeat monitoring active - checking stream health every ' + (HEARTBEAT_INTERVAL/1000) + 's');
                 </script>
             </body>
             </html>
@@ -308,6 +354,35 @@ class WebStreamer:
 
             return jsonify(health_data)
 
+        @self.app.route('/heartbeat')
+        def heartbeat():
+            """Lightweight heartbeat endpoint for freeze detection"""
+            with self.heartbeat_lock:
+                last_update = self.last_frame_update
+
+            current_time = time.time()
+
+            if last_update is None:
+                staleness = -1
+                status = 'initializing'
+            else:
+                staleness = current_time - last_update
+                if staleness > 5.0:
+                    status = 'stale'
+                elif staleness > 3.0:
+                    status = 'degraded'
+                else:
+                    status = 'healthy'
+
+            return jsonify({
+                'timestamp': current_time,
+                'last_frame_update': last_update,
+                'staleness_seconds': round(staleness, 2) if staleness >= 0 else None,
+                'frame_count': self.frame_count,
+                'status': status,
+                'uptime': round(current_time - self.start_time, 2) if self.start_time else 0
+            })
+
     def _format_uptime(self, seconds: float) -> str:
         """Format uptime in human-readable format"""
         hours = int(seconds // 3600)
@@ -343,6 +418,10 @@ class WebStreamer:
         with self.frame_lock:
             self.current_frame = frame.copy()
             self.frame_count += 1
+
+        # Update heartbeat timestamp (separate lock for performance)
+        with self.heartbeat_lock:
+            self.last_frame_update = time.time()
 
     def start(self):
         """Start the web server in a separate thread"""

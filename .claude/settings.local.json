@@ -24,7 +24,10 @@
       "Bash(docker logs:*)",
       "Bash(docker ps:*)",
       "Bash(curl:*)",
-      "Bash(where.exe:*)"
+      "Bash(where.exe:*)",
+      "Bash(grep:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(\"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe\" ps --filter \"name=face_recognition_system\" --format \"{{.Names}}: {{.Status}}\")"
     ]
   }
 }
