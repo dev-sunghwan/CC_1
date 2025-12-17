@@ -9,10 +9,12 @@
 
 ### Replaced Sensitive Information:
 
-1. **Password**: `Sunap1!!` → `YOUR_PASSWORD`
-2. **Username**: `admin` → `YOUR_USERNAME`
-3. **IP Address**: `45.92.235.163` → `192.168.1.100` (example IP)
-4. **IP Address**: `192.168.4.102` → `192.168.1.101` (example IP)
+1. **Password**: `[PASSWORD]` → `YOUR_PASSWORD` (in public files) / `[REDACTED]` (in this document)
+2. **Username**: `admin` → `YOUR_USERNAME` (in public files only)
+3. **IP Address**: `45.92.235.163` → `192.168.1.100` (in public files)
+4. **IP Address**: `192.168.4.102` → `192.168.1.101` (in public files)
+
+**Note:** This document retains username and IP addresses for your reference, but the password is redacted.
 
 ### Files Sanitized:
 
@@ -37,7 +39,7 @@ The following file contains your real credentials and is **excluded from git** v
 
 Your actual credentials remain secure in the local `.env` file:
 - Username: `admin`
-- Password: `Sunap1!!`
+- Password: `[REDACTED]`
 - Home Camera IP: `45.92.235.163`
 - Test Camera IP: `192.168.4.102`
 
