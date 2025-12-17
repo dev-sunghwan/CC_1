@@ -28,7 +28,13 @@
       "Bash(grep:*)",
       "Bash(python -m json.tool:*)",
       "Bash(\"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe\" ps --filter \"name=face_recognition_system\" --format \"{{.Names}}: {{.Status}}\")",
-      "Bash(docker stats:*)"
+      "Bash(docker stats:*)",
+      "Bash(timeout 10 docker-compose logs:*)",
+      "Bash(if [ -f .gitignore ])",
+      "Bash(then echo \"=== .gitignore exists ===\")",
+      "Bash(cat:*)",
+      "Bash(else echo \"=== .gitignore NOT FOUND ===\")",
+      "Bash(fi)"
     ]
   }
 }

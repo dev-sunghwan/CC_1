@@ -307,7 +307,7 @@ WARNING:stream_capture:Failed to read frame
 
 **Solutions:**
 1. Restart container: `docker-compose restart face-recognition`
-2. Check camera is accessible: `ping 45.92.235.163`
+2. Check camera is accessible: `ping 192.168.1.100`
 3. Verify camera settings (no sleep mode)
 
 ---

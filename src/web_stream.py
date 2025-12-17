@@ -47,6 +47,16 @@ class WebStreamer:
         self.tracker_ref = None
         self.face_database = {}
 
+        # Camera information
+        self.camera_info = {
+            'rtsp_url': None,
+            'ip_address': None,
+            'username': None,
+            'port': None,
+            'path': None,
+            'manufacturer': 'Unknown'
+        }
+
         # Pause/resume state
         self.paused = False
         self.pause_lock = threading.Lock()
@@ -710,6 +720,14 @@ class WebStreamer:
 
             return jsonify(health_data)
 
+        @self.app.route('/camera_info')
+        def camera_info():
+            """Get current camera information"""
+            return jsonify({
+                'timestamp': time.time(),
+                'camera': self.camera_info
+            })
+
         @self.app.route('/heartbeat')
         def heartbeat():
             """Lightweight heartbeat endpoint for freeze detection"""
@@ -824,6 +842,34 @@ class WebStreamer:
         """
         self.tracker_ref = tracker
         logger.info("Tracker reference set for web streamer")
+
+    def set_camera_info(self, rtsp_url: str, manufacturer: str = "Hanwha"):
+        """
+        Set camera information from RTSP URL
+
+        Args:
+            rtsp_url: Full RTSP URL (e.g., rtsp://user:pass@192.168.1.100:554/path)
+            manufacturer: Camera manufacturer (default: Hanwha)
+        """
+        import re
+
+        # Parse RTSP URL: rtsp://username:password@ip:port/path
+        pattern = r'rtsp://(?:([^:]+):([^@]+)@)?([^:/]+)(?::(\d+))?(/.*)?'
+        match = re.match(pattern, rtsp_url)
+
+        if match:
+            username, password, ip_address, port, path = match.groups()
+            self.camera_info = {
+                'rtsp_url': rtsp_url,
+                'ip_address': ip_address or 'Unknown',
+                'username': username or 'Unknown',
+                'port': port or '554',
+                'path': path or '/profile2/media.smp',
+                'manufacturer': manufacturer
+            }
+            logger.info(f"Camera info set: {ip_address} ({manufacturer})")
+        else:
+            logger.warning(f"Could not parse RTSP URL: {rtsp_url}")
 
     def _format_uptime(self, seconds: float) -> str:
         """Format uptime in human-readable format"""

@@ -71,7 +71,7 @@ To access it from the company network, **port forwarding has been properly confi
 ### **Final RTSP URL**
 
 ```
-rtsp://45.92.235.163:554/profile2/media.smp
+rtsp://192.168.1.100:554/profile2/media.smp
 ```
 
 Keeping the RTSP port at **554** is ideal because:

@@ -49,7 +49,7 @@ A production-ready face recognition system that:
 
 **What Was Done:**
 1. Created Docker environment with Python 3.10, OpenCV, and InsightFace
-2. Set up RTSP stream connection to IP camera (rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp)
+2. Set up RTSP stream connection to IP camera (rtsp://YOUR_USERNAME:YOUR_PASSWORD@192.168.1.100:554/profile2/media.smp)
 3. Implemented basic face detection using InsightFace buffalo_l models
 4. Created multi-threaded architecture:
    - Thread 1: Stream capture (GStreamer/OpenCV)

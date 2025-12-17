@@ -78,7 +78,7 @@ def __init__(self,
 
 - `rtsp_url`: RTSP stream URL from IP camera
   - Format: `rtsp://username:password@ip:port/path`
-  - Example: `rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp`
+  - Example: `rtsp://YOUR_USERNAME:YOUR_PASSWORD@192.168.1.100:554/profile2/media.smp`
 
 - `detection_interval`: Process every Nth frame
   - `1` = every frame (highest accuracy, most CPU)

@@ -3,7 +3,7 @@
 
 # RTSP Stream Configuration
 rtsp:
-  url: "rtsp://45.92.235.163:554/profile2/media.smp"
+  url: "rtsp://192.168.1.100:554/profile2/media.smp"
   reconnect_attempts: 10
   timeout: 5
   queue_size: 10

@@ -131,6 +131,7 @@ class FaceRecognitionSystem:
             logger.info(f"Initializing web streamer on port {self.web_port}...")
             self.web_streamer = WebStreamer(host='0.0.0.0', port=self.web_port)
             self.web_streamer.set_tracker_reference(self.tracker)
+            self.web_streamer.set_camera_info(self.rtsp_url, manufacturer="Hanwha")
             self.web_streamer.face_database = self.face_pipeline.face_database
             self.web_streamer.start()
 

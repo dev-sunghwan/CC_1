@@ -57,7 +57,7 @@ CC_1/
 
 ## ⚙️ Your Configuration
 
-**RTSP Camera URL:** `rtsp://45.92.235.163:554/profile2/media.smp`
+**RTSP Camera URL:** `rtsp://192.168.1.100:554/profile2/media.smp`
 **Detection Threshold:** 0.5
 **Recognition Threshold:** 0.4
 **System:** Windows 11, Docker Desktop (WSL2)
@@ -138,7 +138,7 @@ Key settings in `.env`:
 
 ```bash
 # Camera
-RTSP_URL=rtsp://45.92.235.163:554/profile2/media.smp
+RTSP_URL=rtsp://192.168.1.100:554/profile2/media.smp
 
 # Performance
 DETECTION_INTERVAL=1          # Process every Nth frame
@@ -159,7 +159,7 @@ LOG_FILE=./logs/face_recognition.log
 ## 📊 System Architecture
 
 ```
-RTSP Camera (45.92.235.163:554)
+RTSP Camera (192.168.1.100:554)
         ↓
 [ GStreamer Stream Capture ]  ← Thread 1
         ↓ (Frame Queue)
@@ -184,10 +184,10 @@ RTSP Camera (45.92.235.163:554)
 ### **Issue: Can't connect to RTSP stream**
 ```powershell
 # Test camera accessibility
-ping 45.92.235.163
+ping 192.168.1.100
 
 # Test RTSP connection directly
-docker run --rm -it jrottenberg/ffmpeg:4.1-alpine -rtsp_transport tcp -i rtsp://45.92.235.163:554/profile2/media.smp -frames:v 1 -f null -
+docker run --rm -it jrottenberg/ffmpeg:4.1-alpine -rtsp_transport tcp -i rtsp://192.168.1.100:554/profile2/media.smp -frames:v 1 -f null -
 ```
 
 ### **Issue: No display window showing**

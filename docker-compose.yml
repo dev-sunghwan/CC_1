@@ -9,7 +9,7 @@ services:
 
     # Environment variables
     environment:
-      - RTSP_URL=rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp
+      - RTSP_URL=rtsp://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CAMERA_IP:554/profile2/media.smp
       - DETECTION_INTERVAL=1
       - LOG_LEVEL=INFO
       - DISPLAY=${DISPLAY:-:0}
@@ -48,7 +48,7 @@ services:
     restart: unless-stopped
 
     # Command override (optional)
-    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://admin:Sunap1!!@45.92.235.163:554/profile2/media.smp} --detection-interval 2 --no-display
+    command: python3 src/main.py --rtsp-url ${RTSP_URL:-rtsp://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CAMERA_IP:554/profile2/media.smp} --detection-interval 2 --no-display
 
     # Logging configuration
     logging:
