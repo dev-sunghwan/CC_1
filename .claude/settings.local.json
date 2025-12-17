@@ -27,7 +27,8 @@
       "Bash(where.exe:*)",
       "Bash(grep:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(\"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe\" ps --filter \"name=face_recognition_system\" --format \"{{.Names}}: {{.Status}}\")"
+      "Bash(\"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe\" ps --filter \"name=face_recognition_system\" --format \"{{.Names}}: {{.Status}}\")",
+      "Bash(docker stats:*)"
     ]
   }
 }
